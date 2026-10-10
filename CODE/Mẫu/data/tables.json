@@ -1,0 +1,38 @@
+[
+  {
+    "id": "TBL-01",
+    "name": "Bàn 1",
+    "status": "AVAILABLE",
+    "current_order_id": null
+  },
+  {
+    "id": "TBL-02",
+    "name": "Bàn 2",
+    "status": "AVAILABLE",
+    "current_order_id": null
+  },
+  {
+    "id": "TBL-03",
+    "name": "Bàn 3",
+    "status": "AVAILABLE",
+    "current_order_id": null
+  },
+  {
+    "id": "TBL-04",
+    "name": "Bàn 4",
+    "status": "AVAILABLE",
+    "current_order_id": null
+  },
+  {
+    "id": "TBL-05",
+    "name": "Bàn 5",
+    "status": "AVAILABLE",
+    "current_order_id": null
+  },
+  {
+    "id": "TBL-06",
+    "name": "Bàn 6",
+    "status": "AVAILABLE",
+    "current_order_id": null
+  }
+]

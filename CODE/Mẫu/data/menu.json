@@ -1,0 +1,86 @@
+[
+  {
+    "id": "MI-001",
+    "name": "Burger Phô mai Gà",
+    "price": 45000,
+    "is_available": true
+  },
+  {
+    "id": "MI-002",
+    "name": "Burger Phô mai Bò",
+    "price": 50000,
+    "is_available": true
+  },
+  {
+    "id": "MI-003",
+    "name": "Burger Phô mai",
+    "price": 40000,
+    "is_available": true
+  },
+  {
+    "id": "MI-004",
+    "name": "Burger Phô mai Cá",
+    "price": 42000,
+    "is_available": true
+  },
+  {
+    "id": "MI-005",
+    "name": "Tôm viên",
+    "price": 30000,
+    "is_available": true
+  },
+  {
+    "id": "MI-006",
+    "name": "Gà rán phần",
+    "price": 35000,
+    "is_available": true
+  },
+  {
+    "id": "MI-007",
+    "name": "Cơm Gà Tender",
+    "price": 55000,
+    "is_available": true
+  },
+  {
+    "id": "MI-008",
+    "name": "Khoai tây chiên",
+    "price": 25000,
+    "is_available": true
+  },
+  {
+    "id": "MI-009",
+    "name": "Pepsi",
+    "price": 15000,
+    "is_available": true
+  },
+  {
+    "id": "MI-010",
+    "name": "Coca-Cola",
+    "price": 15000,
+    "is_available": true
+  },
+  {
+    "id": "MI-011",
+    "name": "7 Up",
+    "price": 15000,
+    "is_available": true
+  },
+  {
+    "id": "MI-012",
+    "name": "Lipton",
+    "price": 18000,
+    "is_available": true
+  },
+  {
+    "id": "MI-013",
+    "name": "Cà phê",
+    "price": 20000,
+    "is_available": true
+  },
+  {
+    "id": "MI-014",
+    "name": "Cam ép",
+    "price": 20000,
+    "is_available": true
+  }
+]

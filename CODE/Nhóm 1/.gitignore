@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.DS_Store
+.vscode/
+.idea/
+*.tmp
+# Khong ignore data/*.json: JSON mau can duoc commit.
+# Neu sau nay co du lieu demo rieng, tao thu muc data/runtime/ va ignore no.
