@@ -1,5 +1,0 @@
-PHO01, Pho bo, 25000
-TEA01, Tra da, 5000
-TOM01, Mi tom, 15000
-COM01, Com chien, 20000
-STI01, Sting, 10000
