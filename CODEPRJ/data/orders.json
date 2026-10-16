@@ -1,1 +1,104 @@
-[]
+[
+  {
+    "id": "ORD-A8895231C5",
+    "items": [
+      {
+        "id": "OI-474D659101",
+        "menu_item_id": "MI-004",
+        "name": "Burger Phô mai Cá",
+        "unit_price": 42000,
+        "quantity": 1,
+        "note": "",
+        "status": "READY",
+        "queue_seq": 1
+      },
+      {
+        "id": "OI-17938AF4E6",
+        "menu_item_id": "MI-006",
+        "name": "Gà rán phần",
+        "unit_price": 35000,
+        "quantity": 1,
+        "note": "",
+        "status": "SERVED",
+        "queue_seq": 2
+      }
+    ],
+    "status": "OPEN",
+    "created_at": "2026-10-17T00:05:37+07:00",
+    "paid_at": null,
+    "total_before_discount": null,
+    "discount_amount": 0,
+    "total_paid": null,
+    "payment_method": null,
+    "cancelled_at": null,
+    "cancel_reason": ""
+  },
+  {
+    "id": "ORD-E657AAF993",
+    "items": [
+      {
+        "id": "OI-7CC27D2D89",
+        "menu_item_id": "MI-004",
+        "name": "Burger Phô mai Cá",
+        "unit_price": 42000,
+        "quantity": 1,
+        "note": "",
+        "status": "PREPARING",
+        "queue_seq": 3
+      },
+      {
+        "id": "OI-5C1C47447F",
+        "menu_item_id": "MI-008",
+        "name": "Khoai tây chiên",
+        "unit_price": 25000,
+        "quantity": 1,
+        "note": "",
+        "status": "PREPARING",
+        "queue_seq": 4
+      },
+      {
+        "id": "OI-75BA5EFF88",
+        "menu_item_id": "MI-011",
+        "name": "Trà đào cam sả",
+        "unit_price": 31200,
+        "quantity": 1,
+        "note": "",
+        "status": "PREPARING",
+        "queue_seq": 5
+      }
+    ],
+    "status": "OPEN",
+    "created_at": "2026-10-17T00:06:47+07:00",
+    "paid_at": null,
+    "total_before_discount": null,
+    "discount_amount": 0,
+    "total_paid": null,
+    "payment_method": null,
+    "cancelled_at": null,
+    "cancel_reason": ""
+  },
+  {
+    "id": "ORD-947CC3E484",
+    "items": [
+      {
+        "id": "OI-EEE33D3DA3",
+        "menu_item_id": "MI-011",
+        "name": "Trà đào cam sả",
+        "unit_price": 31200,
+        "quantity": 5,
+        "note": "",
+        "status": "READY",
+        "queue_seq": 6
+      }
+    ],
+    "status": "OPEN",
+    "created_at": "2026-10-17T00:09:19+07:00",
+    "paid_at": null,
+    "total_before_discount": null,
+    "discount_amount": 0,
+    "total_paid": null,
+    "payment_method": null,
+    "cancelled_at": null,
+    "cancel_reason": ""
+  }
+]
