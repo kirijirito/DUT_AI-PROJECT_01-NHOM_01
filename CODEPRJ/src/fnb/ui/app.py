@@ -1,6 +1,7 @@
 """Giao diện Gradio gọn nhẹ; toàn bộ quy tắc nghiệp vụ vẫn nằm ở Backend."""
 
 import logging
+import json
 
 import gradio as gr
 
@@ -165,18 +166,59 @@ def _orders_table(orders: list[dict]) -> list[list[str]]:
 
 
 def _queue_table(tasks: list[dict]) -> list[list[str]]:
+    """Hàng chờ FIFO: chỉ những thông tin nhân viên bếp cần nhìn thấy."""
     return [
         [
-            str(task.get("queue_seq", "")),
-            str(task.get("order_id", "")),
-            str(task.get("order_item_id", "")),
+            str(index),
             str(task.get("name", "")),
             str(task.get("quantity", "")),
-            str(task.get("status", "")),
+            str(task.get("order_id", "")),
             str(task.get("note", "")),
         ]
-        for task in tasks
+        for index, task in enumerate(tasks, start=1)
     ]
+
+
+def _kitchen_choices(orders: list[dict]) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Tạo danh sách món đang làm/đã xong từ dữ liệu Controller trả về.
+
+    Tên món hiển thị cho nhân viên; mã đơn và mã dòng món được giữ trong
+    giá trị lựa chọn để gửi lại Controller, không yêu cầu gõ bằng tay.
+    """
+    preparing = []
+    ready = []
+
+    for order in orders:
+        if order.get("status") == "CANCELLED":
+            continue
+        order_id = str(order.get("id", ""))
+        if not order_id:
+            continue
+
+        for position, item in enumerate(order.get("items", []), start=1):
+            status = item.get("status")
+            if status not in ("PREPARING", "READY"):
+                continue
+
+            item_id = str(item.get("id") or item.get("order_item_id") or "")
+            if not item_id:
+                continue
+            name = str(item.get("name") or item.get("item_name") or "Món chưa đặt tên")
+            quantity = item.get("quantity", 1)
+            note = str(item.get("note", "")).strip()
+            label = f"{name} × {quantity} — đơn {order_id} (món {position})"
+            if note:
+                label += f" — {note}"
+
+            # json.dumps biến cặp mã thành một chuỗi mà Dropdown lưu được.
+            # Khi bấm nút, json.loads khôi phục đúng hai mã này.
+            selection_key = json.dumps([order_id, item_id], ensure_ascii=False)
+            if status == "PREPARING":
+                preparing.append((label, selection_key))
+            else:
+                ready.append((label, selection_key))
+
+    return preparing, ready
 
 
 def _safe_json(callback, *args):
@@ -269,7 +311,7 @@ def create_app(context: AppContext) -> gr.Blocks:
                             interactive=False,
                             placeholder="Mã đơn sẽ xuất hiện ở đây",
                         )
-                        created_order_result = gr.JSON(label="Kết quả", open=False)
+                        created_order_result = gr.JSON(label="Kết quả", open=False, visible=False)
 
                 # Đăng ký sự kiện sau khi các component giỏ hàng đã được tạo.
                 for menu_button, selected_item, quantity_input, note_input, state_input in menu_button_bindings:
@@ -345,50 +387,126 @@ def create_app(context: AppContext) -> gr.Blocks:
                     outputs=[cart_state, cart_table, cart_summary, cart_message, created_order_id, created_order_result, selected_cart_row],
                 )
 
-            with gr.Tab("🍳 Bếp / Queue", id="kitchen"):
-                gr.Markdown("### Hàng chờ chế biến", elem_classes=["section-heading"])
+            with gr.Tab("🍳 Bếp / Queue", id="kitchen") as kitchen_tab:
+                gr.Markdown("### Quản lý chế biến món", elem_classes=["section-heading"])
+                gr.Markdown("Nhận món theo **FIFO**, sau đó chọn món để xác nhận đã làm xong hoặc đã phục vụ.")
+
                 with gr.Row():
-                    refresh_queue = gr.Button("Làm mới hàng chờ", variant="secondary")
-                    start_next = gr.Button("Nhận món tiếp theo", variant="primary")
+                    refresh_queue = gr.Button("↻ Làm mới", variant="secondary")
+                    start_next = gr.Button("▶ Nhận món tiếp theo", variant="primary")
+
+                kitchen_counts = gr.Markdown("Đang tải thông tin bếp...")
                 queue_table = gr.Dataframe(
-                    headers=["Thứ tự", "Mã đơn", "Mã dòng món", "Tên món", "SL", "Trạng thái", "Ghi chú"],
-                    datatype=["str"] * 7,
+                    headers=["STT", "Tên món", "SL", "Mã đơn", "Ghi chú"],
+                    datatype=["str"] * 5,
                     value=[],
                     interactive=False,
                     wrap=True,
-                    label="Queue FIFO",
+                    label="Hàng chờ FIFO",
                 )
-                kitchen_message = gr.Markdown("Xem hàng chờ để bắt đầu.")
-                refresh_queue.click(
-                    fn=lambda: _queue_table(context.kitchen_controller.get_queue()),
-                    outputs=[queue_table],
-                )
+
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("### 🔥 Đang chế biến", elem_classes=["section-heading"])
+                        preparing_select = gr.Dropdown(
+                            choices=[],
+                            label="Chọn món đang chế biến",
+                            info="Chọn món đã nhận làm để xác nhận hoàn thành.",
+                        )
+                        ready_button = gr.Button("✓ Hoàn thành món", variant="primary")
+                    with gr.Column():
+                        gr.Markdown("### ✅ Chờ phục vụ", elem_classes=["section-heading"])
+                        ready_select = gr.Dropdown(
+                            choices=[],
+                            label="Chọn món chờ phục vụ",
+                            info="Chọn món đã làm xong để xác nhận phục vụ.",
+                        )
+                        served_button = gr.Button("✓ Đã phục vụ", variant="secondary")
+
+                kitchen_message = gr.Markdown("Chọn **Làm mới** để xem thông tin mới nhất.")
+                kitchen_outputs = [
+                    queue_table, preparing_select, ready_select,
+                    kitchen_counts, kitchen_message,
+                ]
+
+                def refresh_kitchen(message="✅ Đã cập nhật danh sách bếp."):
+                    """Chỉ đọc dữ liệu qua Controller, không đọc JSON trực tiếp."""
+                    try:
+                        tasks = context.kitchen_controller.get_queue()
+                        orders = context.order_controller.list_orders()
+                        preparing_choices, ready_choices = _kitchen_choices(orders)
+                        counts = (
+                            f"**⏳ Chờ làm:** {len(tasks)} dòng món  |  "
+                            f"**🔥 Đang chế biến:** {len(preparing_choices)} dòng món  |  "
+                            f"**✅ Chờ phục vụ:** {len(ready_choices)} dòng món"
+                        )
+                        return (
+                            _queue_table(tasks),
+                            gr.update(choices=preparing_choices, value=None),
+                            gr.update(choices=ready_choices, value=None),
+                            counts,
+                            message,
+                        )
+                    except Exception as exc:
+                        return (
+                            [],
+                            gr.update(choices=[], value=None),
+                            gr.update(choices=[], value=None),
+                            "Không tải được dữ liệu bếp.",
+                            f"⚠️ {_error_message(exc)}",
+                        )
 
                 def start_next_action():
                     try:
                         item = context.kitchen_controller.start_next_item()
-                        tasks = context.kitchen_controller.get_queue()
-                        return _queue_table(tasks), f"✅ Đang chế biến: **{item['name']}** — đơn `{item['order_id']}` / món `{item['order_item_id']}`."
+                        message = f"✅ Đang chế biến: **{item.get('name', 'món vừa nhận')}**."
                     except Exception as exc:
-                        return _queue_table(context.kitchen_controller.get_queue()), f"⚠️ {_error_message(exc)}"
+                        message = f"⚠️ {_error_message(exc)}"
+                    return refresh_kitchen(message)
 
-                start_next.click(fn=start_next_action, outputs=[queue_table, kitchen_message])
-                with gr.Row():
-                    kitchen_order_id = gr.Textbox(label="Mã đơn")
-                    kitchen_item_id = gr.Textbox(label="Mã dòng món")
-                with gr.Row():
-                    ready_button = gr.Button("Đánh dấu đã làm xong")
-                    served_button = gr.Button("Đánh dấu đã phục vụ")
+                def finish_item_action(selected):
+                    if not selected:
+                        return refresh_kitchen("⚠️ Hãy chọn một món đang chế biến trước.")
+                    try:
+                        order_id, item_id = json.loads(selected)
+                        context.kitchen_controller.mark_item_ready(order_id, item_id)
+                        message = "✅ Món đã hoàn thành và chuyển sang Chờ phục vụ."
+                    except Exception as exc:
+                        message = f"⚠️ {_error_message(exc)}"
+                    return refresh_kitchen(message)
+
+                def serve_item_action(selected):
+                    if not selected:
+                        return refresh_kitchen("⚠️ Hãy chọn một món chờ phục vụ trước.")
+                    try:
+                        order_id, item_id = json.loads(selected)
+                        context.kitchen_controller.mark_item_served(order_id, item_id)
+                        message = "✅ Đã xác nhận món được phục vụ."
+                    except Exception as exc:
+                        message = f"⚠️ {_error_message(exc)}"
+                    return refresh_kitchen(message)
+
+                # Mỗi nút nhận kết quả của hàm Python rồi cập nhật giao diện.
+                refresh_queue.click(
+                    fn=refresh_kitchen,
+                    outputs=kitchen_outputs,
+                )
+                start_next.click(
+                    fn=start_next_action,
+                    outputs=kitchen_outputs,
+                )
                 ready_button.click(
-                    fn=lambda oid, iid: _call_message(context.kitchen_controller.mark_item_ready, oid.strip(), iid.strip()),
-                    inputs=[kitchen_order_id, kitchen_item_id],
-                    outputs=[kitchen_message],
-                ).then(fn=lambda: _queue_table(context.kitchen_controller.get_queue()), outputs=[queue_table])
+                    fn=finish_item_action,
+                    inputs=[preparing_select],
+                    outputs=kitchen_outputs,
+                )
                 served_button.click(
-                    fn=lambda oid, iid: _call_message(context.kitchen_controller.mark_item_served, oid.strip(), iid.strip()),
-                    inputs=[kitchen_order_id, kitchen_item_id],
-                    outputs=[kitchen_message],
-                ).then(fn=lambda: _queue_table(context.kitchen_controller.get_queue()), outputs=[queue_table])
+                    fn=serve_item_action,
+                    inputs=[ready_select],
+                    outputs=kitchen_outputs,
+                )
+                # Tự cập nhật khi chuyển sang thẻ Bếp.
+                kitchen_tab.select(fn=refresh_kitchen, outputs=kitchen_outputs)
 
             with gr.Tab("🧾 Đơn hàng", id="orders"):
                 gr.Markdown("### Tra cứu và quản lý đơn", elem_classes=["section-heading"])
