@@ -1,6 +1,5 @@
-"""Giao diện demo mỏng: mọi quy tắc nghiệp vụ nằm phía Backend."""
+"""Giao diện Gradio gọn nhẹ; toàn bộ quy tắc nghiệp vụ vẫn nằm ở Backend."""
 
-import json
 import logging
 
 import gradio as gr
@@ -9,224 +8,494 @@ from fnb.bootstrap import AppContext
 from fnb.exceptions import FNBError, StorageError
 
 
-def _pretty(value) -> str:
-    return json.dumps(value, ensure_ascii=False, indent=2)
+CSS = """
+/* Giới hạn độ rộng trang và giảm cỡ tiêu đề mặc định của Markdown. */
+.gradio-container {
+    max-width: 1280px !important;
+    margin: 0 auto !important;
+    padding: 16px 22px 28px !important;
+}
+#app-title h1, #app-title h2, #app-title h3 {
+    font-size: 1.75rem !important;
+    line-height: 1.2 !important;
+    margin: 0 0 4px 0 !important;
+    font-weight: 700 !important;
+}
+#app-subtitle p {
+    font-size: .95rem !important;
+    margin-top: 0 !important;
+    margin-bottom: 12px !important;
+}
+.menu-tile button {
+    min-height: 68px !important;
+    height: auto !important;
+    padding: 10px 8px !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    line-height: 1.35 !important;
+    font-size: .92rem !important;
+    border-radius: 10px !important;
+}
+.menu-tile button span {
+    white-space: pre-line !important;
+}
+.section-heading h2, .section-heading h3 {
+    font-size: 1.15rem !important;
+    margin-top: 4px !important;
+    margin-bottom: 8px !important;
+}
+.small-help p {
+    font-size: .85rem !important;
+}
+.primary-action button {
+    min-height: 44px !important;
+    font-weight: 650 !important;
+}
+@media (max-width: 760px) {
+    .gradio-container { padding: 10px !important; }
+    #app-title h1, #app-title h2, #app-title h3 { font-size: 1.45rem !important; }
+    .menu-tile button { min-height: 60px !important; font-size: .86rem !important; }
+}
+"""
 
 
-def _safe_call(callback, *args) -> str:
-    try:
-        return _pretty(callback(*args))
-    except StorageError:
+def _error_message(exc: Exception) -> str:
+    if isinstance(exc, StorageError):
         logging.exception("Không thể đọc/ghi dữ liệu trong callback Gradio.")
-        return _pretty(
-            {"error": "Không thể đọc/ghi dữ liệu. Hãy nhờ nhóm kiểm tra file JSON."}
-        )
-    except (FNBError, ValueError, TypeError, KeyError) as exc:
-        return _pretty({"error": str(exc)})
-    except Exception:
-        # Ghi chi tiết ở terminal, chỉ đưa thông báo chung ra giao diện.
-        logging.exception("Lỗi chưa xử lý trong callback Gradio.")
-        return _pretty(
-            {"error": "Có lỗi chưa xử lý. Hãy kiểm tra terminal để chẩn đoán."}
-        )
+        return "Không thể đọc/ghi dữ liệu. Hãy nhờ nhóm kiểm tra file JSON."
+    if isinstance(exc, (FNBError, ValueError, TypeError, KeyError)):
+        return str(exc)
+    logging.exception("Lỗi chưa xử lý trong callback Gradio.")
+    return "Có lỗi chưa xử lý. Hãy kiểm tra terminal để chẩn đoán."
 
 
-def _parse_lines(raw_lines: str) -> list[dict]:
+def _call_message(callback, *args) -> str:
     try:
-        lines = json.loads(raw_lines or "[]")
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Danh sách món không phải JSON hợp lệ: {exc.msg}.") from exc
-    if not isinstance(lines, list):
-        raise ValueError("Danh sách món phải là một JSON array.")
-    return lines
+        callback(*args)
+        return "✅ Thao tác thành công."
+    except Exception as exc:  # UI chuyển lỗi thành thông báo dễ hiểu.
+        return f"⚠️ {_error_message(exc)}"
 
 
-def _parse_discount(raw_discount: str) -> int:
+def _format_vnd(value: int | float) -> str:
+    return f"{int(value):,}".replace(",", ".") + " ₫"
+
+
+def _valid_quantity(quantity) -> int:
+    if isinstance(quantity, bool) or not isinstance(quantity, (int, float)):
+        raise ValueError("Số lượng phải là số nguyên dương.")
+    if not float(quantity).is_integer() or quantity <= 0:
+        raise ValueError("Số lượng phải là số nguyên dương.")
+    return int(quantity)
+
+
+def _cart_view(cart: list[dict]) -> tuple[list[list[str]], str]:
+    """Chỉ trình bày tên món và số lượng; tiền cuối do Backend tính."""
+    rows: list[list[str]] = []
+    quantity_total = 0
+    for line in cart or []:
+        quantity = int(line["quantity"])
+        quantity_total += quantity
+        name = str(line["name"])
+        note = str(line.get("note", "")).strip()
+        if note:
+            name = f"{name} — {note}"
+        rows.append([name, str(quantity)])
+    if not rows:
+        return [], "**Giỏ hàng đang trống**"
+    return rows, f"**{len(rows)} dòng món · {quantity_total} phần ăn**"
+
+
+def _add_to_cart(
+    item: dict,
+    quantity,
+    note: str,
+    cart: list[dict] | None,
+) -> tuple[list[dict], list[list[str]], str, str]:
+    current_cart = [dict(line) for line in (cart or [])]
     try:
-        value = int(raw_discount.strip() or "0")
+        amount = _valid_quantity(quantity)
     except ValueError as exc:
-        raise ValueError("Giảm giá phải là số nguyên VND.") from exc
-    if value < 0:
-        raise ValueError("Giảm giá không được âm.")
-    return value
+        rows, summary = _cart_view(current_cart)
+        return current_cart, rows, summary, f"⚠️ {exc}"
+
+    clean_note = (note or "").strip()
+    matching_line = next(
+        (
+            line
+            for line in current_cart
+            if line["menu_item_id"] == item["id"] and line.get("note", "") == clean_note
+        ),
+        None,
+    )
+    if matching_line:
+        matching_line["quantity"] += amount
+    else:
+        current_cart.append(
+            {
+                "menu_item_id": item["id"],
+                "name": item["name"],
+                "quantity": amount,
+                "note": clean_note,
+            }
+        )
+    rows, summary = _cart_view(current_cart)
+    return current_cart, rows, summary, f"✅ Đã thêm **{item['name']} × {amount}** vào giỏ."
+
+
+def _orders_table(orders: list[dict]) -> list[list[str]]:
+    return [
+        [
+            str(order.get("id", "")),
+            str(order.get("status", "")),
+            str(len(order.get("items", []))),
+            _format_vnd(
+                order.get("total_paid")
+                if order.get("status") == "PAID" and order.get("total_paid") is not None
+                else sum(
+                    int(item.get("unit_price", 0)) * int(item.get("quantity", 0))
+                    for item in order.get("items", [])
+                    if item.get("status") != "CANCELLED"
+                )
+            ),
+            str(order.get("created_at", ""))[:16].replace("T", " "),
+        ]
+        for order in orders
+    ]
+
+
+def _queue_table(tasks: list[dict]) -> list[list[str]]:
+    return [
+        [
+            str(task.get("queue_seq", "")),
+            str(task.get("order_id", "")),
+            str(task.get("order_item_id", "")),
+            str(task.get("name", "")),
+            str(task.get("quantity", "")),
+            str(task.get("status", "")),
+            str(task.get("note", "")),
+        ]
+        for task in tasks
+    ]
+
+
+def _safe_json(callback, *args):
+    try:
+        return callback(*args)
+    except Exception as exc:
+        return {"error": _error_message(exc)}
 
 
 def create_app(context: AppContext) -> gr.Blocks:
-    with gr.Blocks(title="F&B Order System — Backend-first") as demo:
+    """Tạo UI nhỏ gọn cho menu/đơn/bếp/thanh toán; không có báo cáo ngày."""
+    menu_items = context.menu_controller.list_menu(available_only=True)
+    menu_items = sorted(menu_items, key=lambda item: (item.get("category", "Khác"), item["name"]))
+    menu_choices = [
+        (f"{item['name']} · {_format_vnd(item['price'])}", item["id"])
+        for item in menu_items
+    ]
+
+    menu_button_bindings = []
+
+    with gr.Blocks(title="Hệ thống quản lý đơn hàng F&B") as demo:
+        gr.Markdown("# Hệ thống quản lý đơn hàng F&B", elem_id="app-title")
         gr.Markdown(
-            "# Hệ thống quản lý đơn hàng F&B\n"
-            "Backend-first: thực đơn → đơn hàng → Queue bếp → thanh toán. "
-            "Không triển khai nghiệp vụ quản lý bàn ăn."
+            "Chọn món bằng cách bấm vào nút tên món và giá. Sau đó tạo đơn để chuyển món vào Queue bếp.",
+            elem_id="app-subtitle",
         )
 
-        with gr.Tab("Thực đơn"):
-            refresh_menu = gr.Button("Tải thực đơn còn bán")
-            menu_output = gr.Code(label="Thực đơn", language="json")
-            refresh_menu.click(
-                fn=lambda: _pretty(context.menu_controller.list_menu()), outputs=menu_output
-            )
-            menu_code = gr.Textbox(label="Mã món cần tra cứu", placeholder="MI-001")
-            lookup_menu = gr.Button("Tra cứu món")
-            lookup_output = gr.Code(label="Kết quả tra cứu", language="json")
-            lookup_menu.click(
-                fn=lambda item_id: _safe_call(context.menu_controller.get_item, item_id.strip()),
-                inputs=menu_code,
-                outputs=lookup_output,
-            )
+        with gr.Tabs():
+            with gr.Tab("🍔 Đặt món", id="order"):
+                cart_state = gr.State([])
+                selected_cart_row = gr.State(None)
+                with gr.Row(equal_height=False):
+                    with gr.Column(scale=3, min_width=360):
+                        with gr.Row():
+                            quantity = gr.Number(
+                                label="Số lượng thêm mỗi lần bấm",
+                                value=1,
+                                precision=0,
+                                minimum=1,
+                                scale=1,
+                            )
+                            note = gr.Textbox(
+                                label="Ghi chú món (không bắt buộc)",
+                                placeholder="Ví dụ: không hành",
+                                scale=2,
+                            )
 
-        with gr.Tab("Tạo đơn / Thêm món"):
-            lines_json = gr.Code(
-                label="Danh sách dòng món (JSON)",
-                language="json",
-                value='[\n  {"menu_item_id": "MI-001", "quantity": 2, "note": ""}\n]',
-            )
-            create_button = gr.Button("Tạo đơn")
-            create_output = gr.Code(label="Đơn vừa tạo", language="json")
+                        if not menu_items:
+                            gr.Markdown("⚠️ Chưa có món nào được nạp từ thực đơn.")
+                        else:
+                            categories = list(dict.fromkeys(item.get("category", "Khác") for item in menu_items))
+                            for category in categories:
+                                category_items = [item for item in menu_items if item.get("category", "Khác") == category]
+                                gr.Markdown(f"### {category}", elem_classes=["section-heading"])
+                                for start in range(0, len(category_items), 4):
+                                    with gr.Row():
+                                        for item in category_items[start : start + 4]:
+                                            button = gr.Button(
+                                                f"{item['name']}\n{_format_vnd(item['price'])}",
+                                                variant="secondary",
+                                                elem_classes=["menu-tile"],
+                                                scale=1,
+                                            )
 
-            def create_order(raw_lines: str) -> str:
-                try:
-                    lines = _parse_lines(raw_lines)
-                except ValueError as exc:
-                    return _pretty({"error": str(exc)})
-                return _safe_call(context.order_controller.create_order, lines)
+                                            menu_button_bindings.append((button, item, quantity, note, cart_state))
 
-            create_button.click(fn=create_order, inputs=lines_json, outputs=create_output)
+                    with gr.Column(scale=2, min_width=320):
+                        gr.Markdown("### Giỏ hàng", elem_classes=["section-heading"])
+                        cart_table = gr.Dataframe(
+                            headers=["Tên món", "Số lượng"],
+                            datatype=["str", "str"],
+                            value=[],
+                            interactive=False,
+                            wrap=True,
+                            label="Các món đã chọn",
+                        )
+                        cart_summary = gr.Markdown("**Giỏ hàng đang trống**")
+                        cart_message = gr.Markdown(
+                            "Bấm vào một món bên trái để thêm vào giỏ.",
+                            elem_classes=["small-help"],
+                        )
+                        with gr.Row():
+                            remove_selected_button = gr.Button("Xóa món chọn", variant="secondary")
+                            clear_cart = gr.Button("Xóa giỏ", variant="secondary")
+                        create_order_button = gr.Button(
+                            "TẠO ĐƠN", variant="primary", elem_classes=["primary-action"]
+                        )
+                        created_order_id = gr.Textbox(
+                            label="Mã đơn vừa tạo",
+                            interactive=False,
+                            placeholder="Mã đơn sẽ xuất hiện ở đây",
+                        )
+                        created_order_result = gr.JSON(label="Kết quả", open=False)
 
-            gr.Markdown("### Thêm món vào đơn đang mở")
-            add_order_id = gr.Textbox(label="Mã đơn đang OPEN")
-            add_lines_json = gr.Code(
-                label="Các món bổ sung (JSON)",
-                language="json",
-                value='[\n  {"menu_item_id": "MI-008", "quantity": 1, "note": ""}\n]',
-            )
-            add_button = gr.Button("Thêm món")
-            add_output = gr.Code(label="Đơn sau khi thêm món", language="json")
+                # Đăng ký sự kiện sau khi các component giỏ hàng đã được tạo.
+                for menu_button, selected_item, quantity_input, note_input, state_input in menu_button_bindings:
+                    def add_item(q, item_note, cart, item=selected_item):
+                        new_cart, rows, summary, message = _add_to_cart(item, q, item_note, cart)
+                        return new_cart, rows, summary, message, None
 
-            def add_items(order_id: str, raw_lines: str) -> str:
-                try:
-                    lines = _parse_lines(raw_lines)
-                except ValueError as exc:
-                    return _pretty({"error": str(exc)})
-                return _safe_call(context.order_controller.add_items, order_id.strip(), lines)
+                    menu_button.click(
+                        fn=add_item,
+                        inputs=[quantity_input, note_input, state_input],
+                        outputs=[cart_state, cart_table, cart_summary, cart_message, selected_cart_row],
+                    )
 
-            add_button.click(
-                fn=add_items,
-                inputs=[add_order_id, add_lines_json],
-                outputs=add_output,
-            )
+                def select_cart_row(cart, evt: gr.SelectData):
+                    index = evt.index[0] if isinstance(evt.index, (tuple, list)) else evt.index
+                    if isinstance(index, int) and 0 <= index < len(cart or []):
+                        name = cart[index].get("name", "món")
+                        return index, f"Đã chọn **{name}**. Bấm 'Xóa món chọn' nếu muốn bỏ món này."
+                    return None, "Không xác định được dòng món đang chọn."
 
-            list_orders_button = gr.Button("Tải toàn bộ đơn hàng")
-            orders_output = gr.Code(label="Lịch sử đơn", language="json")
-            list_orders_button.click(
-                fn=lambda: _pretty(context.order_controller.list_orders()),
-                outputs=orders_output,
-            )
-
-            gr.Markdown("### Hủy đơn (chỉ khi mọi món còn QUEUED)")
-            cancel_order_id = gr.Textbox(label="Mã đơn cần hủy")
-            cancel_reason = gr.Textbox(label="Lý do hủy (không bắt buộc)")
-            cancel_button = gr.Button("Hủy đơn")
-            cancel_output = gr.Code(label="Kết quả hủy đơn", language="json")
-            cancel_button.click(
-                fn=lambda oid, reason: _safe_call(
-                    context.order_controller.cancel_order, oid.strip(), reason
-                ),
-                inputs=[cancel_order_id, cancel_reason],
-                outputs=cancel_output,
-            )
-
-        with gr.Tab("Bếp / Queue FIFO"):
-            get_queue = gr.Button("Xem hàng đợi")
-            queue_output = gr.Code(label="Món đang chờ", language="json")
-            get_queue.click(
-                fn=lambda: _pretty(context.kitchen_controller.get_queue()),
-                outputs=queue_output,
-            )
-            start_next = gr.Button("Nhận món tiếp theo (QUEUED → PREPARING)")
-            start_output = gr.Code(label="Món vừa nhận", language="json")
-            start_next.click(
-                fn=lambda: _safe_call(context.kitchen_controller.start_next_item),
-                outputs=start_output,
-            )
-            kitchen_order_id = gr.Textbox(label="Mã đơn")
-            kitchen_item_id = gr.Textbox(label="Mã dòng món (order_item_id)")
-            ready_button = gr.Button("Đánh dấu READY")
-            ready_output = gr.Code(label="Kết quả READY", language="json")
-            ready_button.click(
-                fn=lambda oid, iid: _safe_call(
-                    context.kitchen_controller.mark_item_ready, oid.strip(), iid.strip()
-                ),
-                inputs=[kitchen_order_id, kitchen_item_id],
-                outputs=ready_output,
-            )
-            served_button = gr.Button("Đánh dấu SERVED")
-            served_output = gr.Code(label="Kết quả SERVED", language="json")
-            served_button.click(
-                fn=lambda oid, iid: _safe_call(
-                    context.kitchen_controller.mark_item_served, oid.strip(), iid.strip()
-                ),
-                inputs=[kitchen_order_id, kitchen_item_id],
-                outputs=served_output,
-            )
-
-        with gr.Tab("Hóa đơn / Thanh toán"):
-            payment_order_id = gr.Textbox(label="Mã đơn cần xem hóa đơn / thanh toán")
-            discount = gr.Textbox(label="Giảm giá (VND, số nguyên)", value="0")
-            preview_button = gr.Button("Xem trước hóa đơn")
-            preview_output = gr.Code(label="Hóa đơn", language="json")
-
-            def preview(order_id: str, raw_discount: str) -> str:
-                try:
-                    amount = _parse_discount(raw_discount)
-                except ValueError as exc:
-                    return _pretty({"error": str(exc)})
-                return _safe_call(
-                    context.payment_controller.preview_bill, order_id.strip(), amount
+                cart_table.select(
+                    fn=select_cart_row,
+                    inputs=[cart_state],
+                    outputs=[selected_cart_row, cart_message],
                 )
 
-            preview_button.click(
-                fn=preview,
-                inputs=[payment_order_id, discount],
-                outputs=preview_output,
-            )
-            payment_method = gr.Dropdown(
-                label="Phương thức thanh toán mô phỏng",
-                choices=["CASH", "CARD", "TRANSFER"],
-                value="CASH",
-            )
-            checkout_button = gr.Button("Xác nhận thanh toán")
-            checkout_output = gr.Code(label="Biên nhận", language="json")
+                def remove_selected_action(cart, selected_index):
+                    current_cart = [dict(line) for line in (cart or [])]
+                    if not isinstance(selected_index, int) or not 0 <= selected_index < len(current_cart):
+                        rows, summary = _cart_view(current_cart)
+                        return current_cart, rows, summary, "Hãy bấm vào một dòng trong giỏ trước khi xóa.", None
+                    removed = current_cart.pop(selected_index)
+                    rows, summary = _cart_view(current_cart)
+                    return current_cart, rows, summary, f"Đã xóa **{removed['name']}** khỏi giỏ.", None
 
-            def checkout(order_id: str, method: str, raw_discount: str) -> str:
-                try:
-                    amount = _parse_discount(raw_discount)
-                except ValueError as exc:
-                    return _pretty({"error": str(exc)})
-                return _safe_call(
-                    context.payment_controller.checkout,
-                    order_id.strip(),
-                    method,
-                    amount,
+                remove_selected_button.click(
+                    fn=remove_selected_action,
+                    inputs=[cart_state, selected_cart_row],
+                    outputs=[cart_state, cart_table, cart_summary, cart_message, selected_cart_row],
                 )
 
-            checkout_button.click(
-                fn=checkout,
-                inputs=[payment_order_id, payment_method, discount],
-                outputs=checkout_output,
-            )
+                def clear_cart_action():
+                    return [], [], "**Giỏ hàng đang trống**", "Đã xóa toàn bộ giỏ hàng.", None
 
-        with gr.Tab("Báo cáo ngày"):
-            report_day = gr.Textbox(
-                label="Ngày YYYY-MM-DD (để trống = hôm nay)", placeholder="2026-10-14"
-            )
-            report_button = gr.Button("Xem doanh thu ngày")
-            report_output = gr.Code(label="Báo cáo", language="json")
-            report_button.click(
-                fn=lambda day: _safe_call(
-                    context.report_controller.daily_summary, day.strip() or None
-                ),
-                inputs=report_day,
-                outputs=report_output,
-            )
+                clear_cart.click(
+                    fn=clear_cart_action,
+                    outputs=[cart_state, cart_table, cart_summary, cart_message, selected_cart_row],
+                )
+
+                def submit_new_order(cart):
+                    if not cart:
+                        rows, summary = _cart_view(cart)
+                        return cart, rows, summary, "⚠️ Vui lòng chọn ít nhất một món.", "", None, None
+                    lines = [
+                        {
+                            "menu_item_id": line["menu_item_id"],
+                            "quantity": int(line["quantity"]),
+                            "note": str(line.get("note", "")),
+                        }
+                        for line in cart
+                    ]
+                    try:
+                        created = context.order_controller.create_order(lines)
+                    except Exception as exc:
+                        rows, summary = _cart_view(cart)
+                        return cart, rows, summary, f"⚠️ {_error_message(exc)}", "", {"error": str(exc)}, None
+                    message = f"✅ Đã tạo đơn **{created['id']}**. Các món đã được đưa vào Queue bếp."
+                    return [], [], "**Giỏ hàng đang trống**", message, created["id"], created, None
+
+                create_order_button.click(
+                    fn=submit_new_order,
+                    inputs=[cart_state],
+                    outputs=[cart_state, cart_table, cart_summary, cart_message, created_order_id, created_order_result, selected_cart_row],
+                )
+
+            with gr.Tab("🍳 Bếp / Queue", id="kitchen"):
+                gr.Markdown("### Hàng chờ chế biến", elem_classes=["section-heading"])
+                with gr.Row():
+                    refresh_queue = gr.Button("Làm mới hàng chờ", variant="secondary")
+                    start_next = gr.Button("Nhận món tiếp theo", variant="primary")
+                queue_table = gr.Dataframe(
+                    headers=["Thứ tự", "Mã đơn", "Mã dòng món", "Tên món", "SL", "Trạng thái", "Ghi chú"],
+                    datatype=["str"] * 7,
+                    value=[],
+                    interactive=False,
+                    wrap=True,
+                    label="Queue FIFO",
+                )
+                kitchen_message = gr.Markdown("Xem hàng chờ để bắt đầu.")
+                refresh_queue.click(
+                    fn=lambda: _queue_table(context.kitchen_controller.get_queue()),
+                    outputs=[queue_table],
+                )
+
+                def start_next_action():
+                    try:
+                        item = context.kitchen_controller.start_next_item()
+                        tasks = context.kitchen_controller.get_queue()
+                        return _queue_table(tasks), f"✅ Đang chế biến: **{item['name']}** — đơn `{item['order_id']}` / món `{item['order_item_id']}`."
+                    except Exception as exc:
+                        return _queue_table(context.kitchen_controller.get_queue()), f"⚠️ {_error_message(exc)}"
+
+                start_next.click(fn=start_next_action, outputs=[queue_table, kitchen_message])
+                with gr.Row():
+                    kitchen_order_id = gr.Textbox(label="Mã đơn")
+                    kitchen_item_id = gr.Textbox(label="Mã dòng món")
+                with gr.Row():
+                    ready_button = gr.Button("Đánh dấu đã làm xong")
+                    served_button = gr.Button("Đánh dấu đã phục vụ")
+                ready_button.click(
+                    fn=lambda oid, iid: _call_message(context.kitchen_controller.mark_item_ready, oid.strip(), iid.strip()),
+                    inputs=[kitchen_order_id, kitchen_item_id],
+                    outputs=[kitchen_message],
+                ).then(fn=lambda: _queue_table(context.kitchen_controller.get_queue()), outputs=[queue_table])
+                served_button.click(
+                    fn=lambda oid, iid: _call_message(context.kitchen_controller.mark_item_served, oid.strip(), iid.strip()),
+                    inputs=[kitchen_order_id, kitchen_item_id],
+                    outputs=[kitchen_message],
+                ).then(fn=lambda: _queue_table(context.kitchen_controller.get_queue()), outputs=[queue_table])
+
+            with gr.Tab("🧾 Đơn hàng", id="orders"):
+                gr.Markdown("### Tra cứu và quản lý đơn", elem_classes=["section-heading"])
+                with gr.Row():
+                    refresh_orders = gr.Button("Tải danh sách đơn", variant="secondary")
+                    search_order_id = gr.Textbox(label="Mã đơn cần xem", placeholder="ORD-...")
+                    search_order_button = gr.Button("Tra cứu")
+                orders_table = gr.Dataframe(
+                    headers=["Mã đơn", "Trạng thái", "Số dòng món", "Tổng tiền", "Ngày tạo"],
+                    datatype=["str"] * 5,
+                    value=[],
+                    interactive=False,
+                    wrap=True,
+                    label="Lịch sử đơn hàng",
+                )
+                order_result = gr.JSON(label="Chi tiết đơn", open=False)
+                refresh_orders.click(
+                    fn=lambda: _orders_table(context.order_controller.list_orders()),
+                    outputs=[orders_table],
+                )
+                search_order_button.click(
+                    fn=lambda oid: _safe_json(context.order_controller.get_order, oid.strip()),
+                    inputs=[search_order_id],
+                    outputs=[order_result],
+                )
+
+                gr.Markdown("### Thêm món vào đơn OPEN", elem_classes=["section-heading"])
+                with gr.Row():
+                    add_order_id = gr.Textbox(label="Mã đơn đang mở")
+                    add_menu_id = gr.Dropdown(label="Món cần thêm", choices=menu_choices, scale=2)
+                    add_quantity = gr.Number(label="Số lượng", value=1, precision=0, minimum=1)
+                add_note = gr.Textbox(label="Ghi chú (không bắt buộc)")
+                add_item_button = gr.Button("Thêm món vào đơn")
+                add_item_result = gr.JSON(label="Kết quả thêm món", open=False)
+
+                def add_item_to_order(order_id, menu_item_id, amount, item_note):
+                    try:
+                        clean_amount = _valid_quantity(amount)
+                        return context.order_controller.add_items(
+                            order_id.strip(),
+                            [{"menu_item_id": menu_item_id, "quantity": clean_amount, "note": item_note or ""}],
+                        )
+                    except Exception as exc:
+                        return {"error": _error_message(exc)}
+
+                add_item_button.click(
+                    fn=add_item_to_order,
+                    inputs=[add_order_id, add_menu_id, add_quantity, add_note],
+                    outputs=[add_item_result],
+                )
+
+                gr.Markdown("### Hủy đơn (chỉ khi tất cả món còn QUEUED)", elem_classes=["section-heading"])
+                with gr.Row():
+                    cancel_order_id = gr.Textbox(label="Mã đơn cần hủy")
+                    cancel_reason = gr.Textbox(label="Lý do hủy (không bắt buộc)")
+                    cancel_button = gr.Button("Hủy đơn", variant="stop")
+                cancel_result = gr.JSON(label="Kết quả hủy đơn", open=False)
+                cancel_button.click(
+                    fn=lambda oid, reason: _safe_json(context.order_controller.cancel_order, oid.strip(), reason or ""),
+                    inputs=[cancel_order_id, cancel_reason],
+                    outputs=[cancel_result],
+                )
+
+            with gr.Tab("💳 Thanh toán", id="payment"):
+                gr.Markdown("### Hóa đơn và thanh toán", elem_classes=["section-heading"])
+                with gr.Row():
+                    payment_order_id = gr.Textbox(label="Mã đơn", placeholder="ORD-...")
+                    discount = gr.Number(label="Giảm giá (VND)", value=0, precision=0, minimum=0)
+                    payment_method = gr.Dropdown(
+                        label="Phương thức",
+                        choices=["CASH", "CARD", "TRANSFER"],
+                        value="CASH",
+                    )
+                with gr.Row():
+                    preview_button = gr.Button("Xem hóa đơn", variant="secondary")
+                    checkout_button = gr.Button("Xác nhận thanh toán", variant="primary")
+                bill_output = gr.JSON(label="Hóa đơn / biên nhận", open=False)
+                payment_message = gr.Markdown("Chọn đơn để xem hóa đơn.")
+
+                def preview_bill(order_id, discount_amount):
+                    try:
+                        amount = _valid_quantity(discount_amount) if discount_amount else 0
+                        bill = context.payment_controller.preview_bill(order_id.strip(), amount)
+                        return bill, "Đã tải hóa đơn. Hãy kiểm tra kỹ trước khi thanh toán."
+                    except Exception as exc:
+                        return {"error": _error_message(exc)}, "⚠️ Không thể xem hóa đơn."
+
+                preview_button.click(
+                    fn=preview_bill,
+                    inputs=[payment_order_id, discount],
+                    outputs=[bill_output, payment_message],
+                )
+
+                def checkout(order_id, method, discount_amount):
+                    try:
+                        amount = int(discount_amount or 0)
+                        receipt = context.payment_controller.checkout(
+                            order_id.strip(), method, amount
+                        )
+                        return receipt, f"✅ Thanh toán thành công cho đơn **{receipt['id']}**."
+                    except Exception as exc:
+                        return {"error": _error_message(exc)}, "⚠️ Thanh toán chưa thành công."
+
+                checkout_button.click(
+                    fn=checkout,
+                    inputs=[payment_order_id, payment_method, discount],
+                    outputs=[bill_output, payment_message],
+                )
 
     return demo
