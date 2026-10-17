@@ -1,8 +1,8 @@
 """Composition root: khởi tạo và nối Repository, Service, Controller."""
 
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
-import shutil
 
 from fnb.controllers.kitchen_controller import KitchenController
 from fnb.controllers.menu_controller import MenuController
@@ -17,7 +17,6 @@ from fnb.services.order_service import OrderService
 from fnb.services.payment_service import PaymentService
 from fnb.services.report_service import ReportService
 from fnb.storage.json_store import JsonStore
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
