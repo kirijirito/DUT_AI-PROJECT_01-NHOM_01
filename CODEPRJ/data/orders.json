@@ -1,0 +1,26 @@
+[
+  {
+    "id": "ORD-2EDFEDD854",
+    "items": [
+      {
+        "id": "OI-8DE4699B98",
+        "menu_item_id": "MI-001",
+        "name": "Burger Phô mai Gà",
+        "unit_price": 45000,
+        "quantity": 4,
+        "note": "",
+        "status": "SERVED",
+        "queue_seq": 1
+      }
+    ],
+    "status": "PAID",
+    "created_at": "2026-10-17T23:49:26+07:00",
+    "paid_at": "2026-10-17T23:50:11+07:00",
+    "total_before_discount": 180000,
+    "discount_amount": 0,
+    "total_paid": 180000,
+    "payment_method": "CASH",
+    "cancelled_at": null,
+    "cancel_reason": ""
+  }
+]
