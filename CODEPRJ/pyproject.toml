@@ -1,7 +1,7 @@
 [project]
 name = "fnb-order-system"
 version = "0.1.0"
-description = "Starter project quan ly don hang F&B cho do an sinh vien"
+description = "F&B Simple Order System with OOP Linked-List FIFO Queue"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["gradio>=5.0"]

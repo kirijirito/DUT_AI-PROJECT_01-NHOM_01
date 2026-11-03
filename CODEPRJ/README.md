@@ -1,16 +1,20 @@
-# Hệ thống Quản lý Đơn hàng F&B — Backend-first starter
+# F&B Simple Order System
 
-Bộ khung học tập cho nhóm 5 sinh viên năm nhất. Phiên bản này bám theo SRS đã thống nhất: **dùng JSON và bỏ nghiệp vụ quản lý bàn ăn**.
+Project học tập cho nhóm 5 sinh viên năm nhất. Phiên bản này chỉ tập trung vào ba chức năng:
+
+1. Chọn món và tạo một đơn hàng.
+2. Đưa từng dòng món vào Queue FIFO, xử lý từ đầu hàng đợi và chuyển sang `SERVED`.
+3. Thanh toán một đơn khi tất cả món trong đơn đã `SERVED`, sau đó hiển thị hóa đơn.
 
 ## Công nghệ
 
 - Python 3.11+
-- `uv` quản lý môi trường/dependencies
-- Gradio làm UI mỏng
-- JSON lưu menu và đơn hàng
-- `dict` làm Hash Map tra cứu món/đơn theo ID (trung bình O(1))
-- `collections.deque` làm Queue FIFO cho các dòng món chờ bếp
-- `pytest` và `ruff` để kiểm thử/lint
+- `uv` quản lý môi trường và dependencies.
+- Gradio tạo giao diện web.
+- JSON lưu menu và đơn hàng.
+- `dict` trong Repository tra cứu món/đơn theo mã (trung bình O(1)).
+- Queue FIFO tự cài đặt bằng OOP + Linked List (`Node`, `Queue`); không dùng `list` hoặc `collections.deque` làm hàng đợi.
+- `pytest` kiểm thử.
 
 ## Chạy dự án
 
@@ -20,12 +24,10 @@ uv run pytest
 uv run python -m fnb.main
 ```
 
-Nếu chưa có `uv.lock`, chạy `uv lock` rồi commit file đó để tất cả thành viên đồng bộ dependencies.
-
-## Cấu trúc
+## Cấu trúc thư mục
 
 ```text
-fnb_order_system_starter/
+CODEPRJ/
 ├── data/
 │   ├── menu.json
 │   └── orders.json
@@ -33,39 +35,39 @@ fnb_order_system_starter/
 │   ├── ARCHITECTURE.md
 │   ├── API_CONTRACT.md
 │   ├── MEMBER_TASKS.md
-│   ├── SRS_FNB_v1.0.3.md
-│   ├── SRS_SCOPE_ADJUSTMENTS.md
-│   └── GIT_UV_WORKFLOW.md
+│   ├── GIT_UV_WORKFLOW.md
+│   └── SRS_FNB_v1.1.0.md
 ├── src/fnb/
+│   ├── controllers/
 │   ├── models.py
-│   ├── exceptions.py
-│   ├── storage/json_store.py
+│   ├── queue/
+│   │   ├── node.py
+│   │   └── queue.py
 │   ├── repositories/
 │   ├── services/
-│   ├── controllers/
-│   ├── ui/app.py
+│   ├── storage/
+│   ├── ui/
 │   ├── bootstrap.py
 │   └── main.py
 └── tests/
 ```
 
-## Quy tắc nghiệp vụ quan trọng
+## Quy tắc nghiệp vụ
 
-- `OrderService` kiểm tra mã món, trạng thái còn bán và số lượng nguyên dương.
-- Tên và đơn giá được chụp vào `OrderItem` tại thời điểm đặt, để cập nhật menu không làm thay đổi hóa đơn cũ.
-- Mỗi dòng món là một phần tử Queue; `quantity=2` vẫn là một task Queue với số lượng 2.
-- Queue dùng `deque` và được dựng lại sau khởi động từ các dòng có trạng thái `QUEUED`, sắp xếp theo `queue_seq`.
-- Chỉ được hủy đơn `OPEN` khi tất cả dòng món còn `QUEUED`; đơn hủy và đơn đã thanh toán vẫn nằm trong lịch sử.
-- Chỉ được thanh toán khi tất cả món ở trạng thái `READY` hoặc `SERVED`; không cho thanh toán lần hai.
-- Backend tự tính tiền từ snapshot giá; UI không gửi số tiền cuối cùng để backend tin dùng.
-- Dữ liệu mẫu không ghi đè các file JSON đang tồn tại. JSON phù hợp cho project nhỏ một tiến trình, không phải cơ chế ghi đồng thời đa tiến trình.
-- Không triển khai nghiệp vụ bàn; không có `table_id` trong `Order`.
+- Một lần nhấn “Tạo đơn” tạo một `Order`; toàn bộ món của cùng lượt đặt nằm trong đơn đó.
+- Món trùng mã và cùng ghi chú được gộp số lượng thành một dòng. Mỗi dòng món là một Node Queue, `quantity=3` vẫn là một Node.
+- Mỗi dòng món chỉ có hai trạng thái: `QUEUED` và `SERVED`.
+- Bếp chỉ được xác nhận phục vụ Node ở đầu Queue. Sau khi JSON ghi trạng thái `SERVED` thành công, Node mới được lấy khỏi Queue.
+- `orders.json` lưu nội dung đơn, trạng thái món và `queue_seq`. Khi khởi động, Queue Linked List được dựng lại từ các dòng `QUEUED` theo `queue_seq`.
+- Mỗi lần tạo đơn hoặc phục vụ món, trạng thái liên quan được ghi xuống JSON ngay. Không cần phụ thuộc vào thao tác đóng ứng dụng để lưu Queue.
+- Hóa đơn gom các món cùng mã trong một đơn và cộng số lượng. Ghi chú khác nhau được gom vào cùng dòng hóa đơn.
+- Chỉ thanh toán khi tất cả món đã `SERVED`; Backend chặn thanh toán lặp.
+- Không có quản lý bàn, báo cáo doanh thu, hủy đơn, thêm món sau khi tạo đơn, quản lý kho, đăng nhập hoặc phân quyền.
 
-## Đọc tài liệu theo thứ tự
+## Đọc tài liệu
 
-1. `docs/ARCHITECTURE.md` — luồng giữa các lớp.
-2. `docs/API_CONTRACT.md` — tên hàm và input/output.
-3. `docs/MEMBER_TASKS.md` — vai trò và đầu ra từng thành viên.
-4. `docs/SRS_FNB_v1.0.3.md` — bản SRS đã điều chỉnh, dùng làm căn cứ nghiệm thu.
-5. `docs/GIT_UV_WORKFLOW.md` — branch, PR, commit và lệnh kiểm tra.
-6. `docs/SRS_SCOPE_ADJUSTMENTS.md` — ghi chú đối chiếu với bản SRS trước đó.
+1. `docs/ARCHITECTURE.md`
+2. `docs/API_CONTRACT.md`
+3. `docs/MEMBER_TASKS.md`
+4. `docs/SRS_FNB_v1.1.0.md`
+5. `docs/GIT_UV_WORKFLOW.md`

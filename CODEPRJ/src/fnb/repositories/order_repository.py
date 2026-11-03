@@ -1,4 +1,4 @@
-"""CRUD đơn hàng; dict lập chỉ mục theo mã đơn (tra cứu trung bình O(1))."""
+"""Repository đơn hàng; dict dùng làm Hash Map tra cứu theo mã đơn."""
 
 from fnb.models import Order
 from fnb.storage.json_store import JsonStore
@@ -19,21 +19,8 @@ class OrderRepository:
         return [Order.from_dict(order.to_dict()) for order in self._orders_by_id.values()]
 
     def upsert(self, order: Order) -> None:
+        """Ghi JSON trước, sau đó mới cập nhật Hash Map trong bộ nhớ."""
         candidate = self._orders_by_id.copy()
-        candidate[order.id] = order
-        self._persist(candidate)
+        candidate[order.id] = Order.from_dict(order.to_dict())
+        self._store.save_records([item.to_dict() for item in candidate.values()])
         self._orders_by_id = candidate
-
-    def delete(self, order_id: str) -> bool:
-        """CRUD cấp Repository; Service không cho xóa đơn PAID/CANCELLED."""
-        if order_id not in self._orders_by_id:
-            return False
-        candidate = self._orders_by_id.copy()
-        del candidate[order_id]
-        self._persist(candidate)
-        self._orders_by_id = candidate
-        return True
-
-    def _persist(self, orders_by_id: dict[str, Order] | None = None) -> None:
-        source = orders_by_id if orders_by_id is not None else self._orders_by_id
-        self._store.save_records([order.to_dict() for order in source.values()])

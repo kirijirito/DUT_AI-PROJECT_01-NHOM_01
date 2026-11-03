@@ -1,4 +1,4 @@
-"""View màn hình Thanh toán (Billing & Cashier) — Thuần Gradio Native Components."""
+"""View xem hóa đơn và xác nhận thanh toán."""
 
 from dataclasses import dataclass
 
@@ -9,75 +9,46 @@ from fnb.ui.presenter import FnbPresenter
 
 @dataclass
 class PaymentViewComponents:
-    """Tập hợp tất cả UI components của Màn hình Thanh toán."""
-
-    order_select_dropdown: gr.Dropdown
-    btn_refresh_unpaid: gr.Button
-    bill_items_table: gr.Dataframe
-    total_due_md: gr.Markdown
-    payment_method_radio: gr.Radio
+    order_dropdown: gr.Dropdown
+    btn_refresh: gr.Button
+    bill_table: gr.Dataframe
+    total_md: gr.Markdown
+    status_md: gr.Markdown
     btn_checkout: gr.Button
-    checkout_feedback_md: gr.Markdown
-    receipt_preview_md: gr.Markdown
+    checkout_feedback: gr.Markdown
+    receipt_md: gr.Markdown
 
 
 def build_payment_view(presenter: FnbPresenter) -> PaymentViewComponents:
-    """Xây dựng layout View màn hình Thanh toán, không chứa logic nghiệp vụ."""
-    unpaid_choices = presenter.get_unpaid_order_choices()
+    gr.Markdown("### 💳 Thanh toán & Hóa đơn")
+    with gr.Row():
+        order_dropdown = gr.Dropdown(
+            label="Chọn đơn hàng cần thanh toán",
+            choices=presenter.get_unpaid_order_choices(),
+            scale=5,
+        )
+        btn_refresh = gr.Button("🔄 Làm mới đơn", scale=1)
 
-    gr.Markdown("## 💳 Thanh toán hóa đơn dịch vụ")
-
-    with gr.Row(equal_height=False):
-        # Cột Bên trái: Chọn đơn hàng & Chi tiết món ăn
-        with gr.Column(scale=7):
-            with gr.Row():
-                order_select_dropdown = gr.Dropdown(
-                    label="Chọn đơn hàng cần thanh toán",
-                    choices=unpaid_choices,
-                    scale=3,
-                )
-                btn_refresh_unpaid = gr.Button("🔄 Làm mới đơn", scale=1)
-
-            gr.Markdown("### 📋 Chi tiết các món trong hóa đơn")
-            bill_items_table = gr.Dataframe(
-                headers=["Tên món", "Số lượng", "Đơn giá", "Thành tiền", "Trạng thái món"],
-                datatype=["str", "str", "str", "str", "str"],
-                value=[],
-                interactive=False,
-                wrap=True,
-            )
-
-            total_due_md = gr.Markdown("## 💵 TỔNG CẦN THANH TOÁN: **0 ₫**")
-
-        # Cột Bên phải: Phương thức thanh toán & Xác nhận
-        with gr.Column(scale=5):
-            gr.Markdown("### 💰 Hình thức thanh toán")
-            payment_method_radio = gr.Radio(
-                label="Chọn phương thức thanh toán",
-                choices=[
-                    "💵 TIỀN MẶT (CASH)",
-                    "📲 CHUYỂN KHOẢN QR (TRANSFER)",
-                    "💳 THẺ NGÂN HÀNG (CARD)",
-                ],
-                value="💵 TIỀN MẶT (CASH)",
-            )
-
-            btn_checkout = gr.Button(
-                "✅ HOÀN TẤT THANH TOÁN & XUẤT HÓA ĐƠN",
-                variant="primary",
-                size="lg",
-            )
-
-            checkout_feedback_md = gr.Markdown()
-            receipt_preview_md = gr.Markdown()
+    bill_table = gr.Dataframe(
+        headers=["STT", "Tên món", "SL", "Đơn giá", "Thành tiền", "Ghi chú", "Trạng thái"],
+        datatype=["str", "str", "str", "str", "str", "str", "str"],
+        value=[],
+        interactive=False,
+        wrap=True,
+    )
+    total_md = gr.Markdown("**Tổng thanh toán: 0 đ**")
+    status_md = gr.Markdown("Chọn một đơn để xem tình trạng các món.")
+    btn_checkout = gr.Button("🧾 XÁC NHẬN THANH TOÁN & IN BILL", variant="primary", size="lg")
+    checkout_feedback = gr.Markdown()
+    receipt_md = gr.Markdown()
 
     return PaymentViewComponents(
-        order_select_dropdown=order_select_dropdown,
-        btn_refresh_unpaid=btn_refresh_unpaid,
-        bill_items_table=bill_items_table,
-        total_due_md=total_due_md,
-        payment_method_radio=payment_method_radio,
+        order_dropdown=order_dropdown,
+        btn_refresh=btn_refresh,
+        bill_table=bill_table,
+        total_md=total_md,
+        status_md=status_md,
         btn_checkout=btn_checkout,
-        checkout_feedback_md=checkout_feedback_md,
-        receipt_preview_md=receipt_preview_md,
+        checkout_feedback=checkout_feedback,
+        receipt_md=receipt_md,
     )

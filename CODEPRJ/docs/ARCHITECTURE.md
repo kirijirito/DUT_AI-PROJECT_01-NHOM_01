@@ -1,77 +1,71 @@
-# Kiến trúc hệ thống — phiên bản theo phạm vi đã chốt
+# Kiến trúc hệ thống F&B Simple Order
 
 ## 1. Phạm vi
 
-Ứng dụng quản lý thực đơn, đơn hàng, hàng đợi bếp, trạng thái món, thanh toán, hủy đơn hợp lệ, báo cáo doanh thu ngày và khôi phục dữ liệu. **Không triển khai nghiệp vụ quản lý bàn ăn** trong phiên bản này.
+Ứng dụng chỉ có ba nhóm chức năng: tạo đơn từ menu, xử lý Queue bếp FIFO và thanh toán/in hóa đơn. Không triển khai nghiệp vụ bàn, báo cáo, hủy đơn, quản lý kho, đăng nhập hoặc phân quyền.
 
-Dữ liệu lưu lâu dài bằng file JSON theo SRS. Chạy trong một tiến trình Python; không cam kết an toàn cho nhiều tiến trình đồng thời ghi chung file.
-
-## 2. Sơ đồ lớp
+## 2. Các lớp
 
 ```text
-Người dùng
+Gradio UI
    ↓
-UI / Gradio (src/fnb/ui)
+Controller
    ↓
-Controller (src/fnb/controllers)
+Service
    ↓
-Service (src/fnb/services)
-   ├── MenuService: xem thực đơn / tra mã món
-   ├── OrderService: tạo, thêm, hủy đơn
-   ├── KitchenService: Queue FIFO và trạng thái món
-   ├── PaymentService: hóa đơn, giảm giá, thanh toán
-   └── ReportService: báo cáo doanh thu ngày
+Repository
    ↓
-Repository (src/fnb/repositories)
-   ├── MenuRepository: dict theo mã món
-   └── OrderRepository: dict theo mã đơn
-   ↓
-JsonStore (src/fnb/storage)
-   ↓
-JSON files (data/menu.json, data/orders.json)
+JsonStore → menu.json / orders.json
 
-Models định nghĩa cấu trúc dữ liệu dùng chung.
+KitchenService → Queue (Linked List tự cài đặt)
 ```
 
-## 3. Trách nhiệm từng lớp
+- **UI:** nhận thao tác, gửi dữ liệu tới Controller và hiển thị kết quả. Không tự sửa JSON, không tự quản lý Queue, không tự quyết định điều kiện thanh toán.
+- **Controller:** tiếp nhận lời gọi từ UI và gọi Service phù hợp.
+- **Service:** kiểm tra và thực hiện quy tắc nghiệp vụ.
+- **Repository:** dùng `dict` làm Hash Map tra cứu theo mã và đồng bộ với JSON.
+- **JsonStore:** đọc/ghi JSON; không chứa nghiệp vụ.
+- **Queue:** cấu trúc dữ liệu riêng bằng Node và Linked List, do `KitchenService` sở hữu.
 
-- **UI:** nhận input và hiển thị kết quả/lỗi. Không tự tính tiền, xử lý Queue hoặc đọc/ghi JSON.
-- **Controller:** làm cổng giữa UI và Service; nhận tham số, gọi Service, chuyển kết quả Model thành dict/list.
-- **Service:** chứa quy tắc nghiệp vụ. `OrderService` xác thực và điều phối tạo/thêm/hủy đơn; `KitchenService` xử lý FIFO và trạng thái món; `PaymentService` tính hóa đơn và kiểm tra điều kiện thanh toán.
-- **Repository:** giữ Hash Map trong bộ nhớ, cung cấp CRUD, đồng bộ dữ liệu với JsonStore.
-- **Models:** định nghĩa `MenuItem`, `Order`, `OrderItem` và các trạng thái hợp lệ.
-- **JsonStore:** chỉ đọc/ghi danh sách bản ghi JSON, không hiểu quy tắc nghiệp vụ nhà hàng.
+## 3. Cấu trúc Queue OOP
+
+`src/fnb/queue/node.py` định nghĩa `Node(data, next)`. `src/fnb/queue/queue.py` định nghĩa `Queue` với `front`, `rear`, `_size` và các phương thức:
+
+- `enqueue(item)`: thêm cuối hàng đợi, O(1).
+- `dequeue()`: lấy đầu hàng đợi, O(1).
+- `peek()`: xem phần tử đầu, O(1).
+- `is_empty()`, `size()`, `to_list()`.
+
+Không dùng `collections.deque` hoặc Python `list` để cài đặt Queue. `to_list()` chỉ tạo bản sao phục vụ hiển thị/kiểm thử.
+
+Một Node lưu khóa tham chiếu `(queue_seq, order_id, order_item_id)`, không sao chép toàn bộ Order vào Queue. Dữ liệu món đầy đủ nằm trong Order JSON.
 
 ## 4. Luồng tạo đơn
 
-1. UI gửi danh sách dòng món `{menu_item_id, quantity, note}` đến `OrderController`.
-2. Controller gọi `OrderService.create_order(lines)`.
-3. Service kiểm tra danh sách không rỗng; mã món tồn tại và còn bán; số lượng là số nguyên dương.
-4. Service tạo `Order` và các `OrderItem`; tên/giá món được chụp tại thời điểm đặt.
-5. `OrderRepository` lưu đơn vào `orders.json`.
-6. `KitchenService` thêm từng dòng món có trạng thái `QUEUED` vào cuối `deque` theo `queue_seq`.
-7. Controller trả kết quả cho UI.
+1. UI tạo giỏ tạm và gửi `{menu_item_id, quantity, note}` đến `OrderController`.
+2. `OrderService` kiểm tra mã món, tình trạng còn bán và số lượng nguyên dương.
+3. Các dòng có cùng mã món và cùng ghi chú được gộp số lượng.
+4. Service chụp tên/giá hiện tại từ Menu, tạo `Order` và gán `queue_seq` tăng dần.
+5. `OrderRepository` ghi Order vào `orders.json`.
+6. `KitchenService` enqueue các Node theo đúng thứ tự. Một dòng món có `quantity=3` vẫn là một Node.
 
-## 5. Queue và Hash Map
+## 5. Luồng bếp và lưu/khôi phục Queue
 
-- **Hash Map:** `MenuRepository._items_by_id` và `OrderRepository._orders_by_id` dùng `dict` với mã làm khóa. Tra cứu trung bình O(1).
-- **Queue:** `KitchenService._queue` là `collections.deque`; `append()` thêm cuối, `popleft()` nhận món đầu.
-- **Đơn vị Queue:** một dòng món trong đơn là một task Queue. `quantity=2` vẫn là một task có số lượng 2, đúng quy tắc SRS.
-- **Khôi phục:** Queue không lưu độc lập trong file. Khi khởi động, hệ thống nạp `orders.json`, lấy các dòng thuộc đơn `OPEN` còn `QUEUED`, sắp xếp theo `queue_seq` rồi dựng lại `deque`.
-- **Món đang chế biến:** `PREPARING` vẫn được lưu trong JSON, nhưng không quay lại Queue khi khởi động; người dùng có thể tìm đơn/món và tiếp tục cập nhật trạng thái.
+- Queue chỉ chứa các dòng `QUEUED` của các đơn `OPEN`.
+- Bếp chỉ được xử lý phần tử ở `front`, bảo đảm FIFO.
+- `serve_next_item()` xem Node đầu, tải Order/OrderItem, đổi trạng thái sang `SERVED` và ghi JSON trước. Chỉ khi ghi thành công mới `dequeue()` Node.
+- Nếu ghi JSON thất bại, Node vẫn ở đầu Queue, người dùng có thể thử lại.
+- Khi khởi động, `KitchenService` đọc Orders từ Repository, lấy mọi dòng `QUEUED`, sắp xếp theo `queue_seq` và enqueue lại vào Linked List.
+- `orders.json` là nguồn lưu lâu dài; Queue trong RAM vẫn là Linked List OOP thực sự. Không có file JSON nào đóng vai trò thay cho cấu trúc Queue.
 
-## 6. Trạng thái hợp lệ
+## 6. Luồng thanh toán
 
-```text
-Order: OPEN → PAID
-             ↘ CANCELLED (chỉ khi mọi dòng món vẫn QUEUED)
+1. Thu ngân chọn một đơn `OPEN` và xem hóa đơn.
+2. `PaymentService` gom các món cùng mã trong cùng Order, cộng số lượng và tính thành tiền từ giá snapshot.
+3. Nếu còn bất kỳ món nào `QUEUED`, Service từ chối thanh toán.
+4. Khi tất cả món `SERVED`, Service đổi đơn sang `PAID`, lưu `paid_at` và `total_paid` vào JSON.
+5. UI hiển thị hóa đơn đã thanh toán ngay trong tab Thanh toán & Hóa đơn.
 
-OrderItem: QUEUED → PREPARING → READY → SERVED
-     QUEUED → CANCELLED (khi hủy đơn hợp lệ)
-```
+## 7. Giới hạn
 
-Không cho bỏ qua bước hoặc chuyển ngược trạng thái. Không thanh toán lần hai. Đơn `PAID` và `CANCELLED` được giữ lại trong lịch sử.
-
-## 7. Phạm vi ngoài MVP
-
-Quản lý bàn, đăng nhập/phân quyền, đặt bàn trước, nhiều chi nhánh, tồn kho, thanh toán trực tuyến thực tế, SQL, nhiều tiến trình cùng ghi JSON và hoàn tiền không thuộc phiên bản hiện tại.
+Ứng dụng chạy một tiến trình Python, lưu JSON cục bộ. Không cam kết an toàn khi nhiều tiến trình cùng ghi file. Thanh toán chỉ là xác nhận nội bộ, không tích hợp ngân hàng/cổng thanh toán.
