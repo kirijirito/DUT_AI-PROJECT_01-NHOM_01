@@ -1,1 +1,1 @@
-"""Lớp nghiệp vụ của hệ thống."""
+"""Các Service xử lý nghiệp vụ chính."""

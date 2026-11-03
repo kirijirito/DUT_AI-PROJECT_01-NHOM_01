@@ -1,4 +1,4 @@
-"""Mô hình dữ liệu dùng chung; không chứa luồng nghiệp vụ nhà hàng."""
+"""Các model dữ liệu tối thiểu cho hệ thống đặt món F&B."""
 
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -9,19 +9,15 @@ from typing import Any
 class OrderStatus(StrEnum):
     OPEN = "OPEN"
     PAID = "PAID"
-    CANCELLED = "CANCELLED"
 
 
 class ItemStatus(StrEnum):
     QUEUED = "QUEUED"
-    PREPARING = "PREPARING"
-    READY = "READY"
     SERVED = "SERVED"
-    CANCELLED = "CANCELLED"
 
 
 def now_iso() -> str:
-    """Timestamp ISO 8601 có thông tin múi giờ."""
+    """Trả về thời gian hiện tại ở định dạng ISO 8601."""
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
@@ -37,8 +33,8 @@ class MenuItem:
         return {
             "id": self.id,
             "name": self.name,
-            "category": self.category,
             "price": self.price,
+            "category": self.category,
             "is_available": self.is_available,
         }
 
@@ -48,14 +44,14 @@ class MenuItem:
             id=str(data["id"]),
             name=str(data["name"]),
             price=int(data["price"]),
-            category=str(data.get("category", data.get("group", "Khác"))),
+            category=str(data.get("category", "Khác")),
             is_available=bool(data.get("is_available", True)),
         )
 
 
 @dataclass
 class OrderItem:
-    """Một dòng món trong đơn; quantity không làm tăng số phần tử Queue."""
+    """Một dòng món; quantity không tạo thêm Node trong Queue."""
 
     id: str
     menu_item_id: str
@@ -84,6 +80,7 @@ class OrderItem:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "OrderItem":
+        item_status = ItemStatus(data.get("status", ItemStatus.QUEUED.value))
         return cls(
             id=str(data["id"]),
             menu_item_id=str(data["menu_item_id"]),
@@ -91,7 +88,7 @@ class OrderItem:
             unit_price=int(data["unit_price"]),
             quantity=int(data["quantity"]),
             note=str(data.get("note", "")),
-            status=ItemStatus(data.get("status", ItemStatus.QUEUED.value)),
+            status=item_status,
             queue_seq=int(data.get("queue_seq", 0)),
         )
 
@@ -103,16 +100,11 @@ class Order:
     status: OrderStatus = OrderStatus.OPEN
     created_at: str = field(default_factory=now_iso)
     paid_at: str | None = None
-    total_before_discount: int | None = None
-    discount_amount: int = 0
     total_paid: int | None = None
-    payment_method: str | None = None
-    cancelled_at: str | None = None
-    cancel_reason: str = ""
 
     @property
     def subtotal(self) -> int:
-        return sum(item.line_total for item in self.items if item.status != ItemStatus.CANCELLED)
+        return sum(item.line_total for item in self.items)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -121,30 +113,18 @@ class Order:
             "status": self.status.value,
             "created_at": self.created_at,
             "paid_at": self.paid_at,
-            "total_before_discount": self.total_before_discount,
-            "discount_amount": self.discount_amount,
             "total_paid": self.total_paid,
-            "payment_method": self.payment_method,
-            "cancelled_at": self.cancelled_at,
-            "cancel_reason": self.cancel_reason,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Order":
-        total_before_discount = data.get("total_before_discount")
-        total_paid = data.get("total_paid")
         return cls(
             id=str(data["id"]),
             items=[OrderItem.from_dict(item) for item in data.get("items", [])],
             status=OrderStatus(data.get("status", OrderStatus.OPEN.value)),
             created_at=str(data.get("created_at", now_iso())),
             paid_at=data.get("paid_at"),
-            total_before_discount=(
-                int(total_before_discount) if total_before_discount is not None else None
+            total_paid=(
+                int(data["total_paid"]) if data.get("total_paid") is not None else None
             ),
-            discount_amount=int(data.get("discount_amount", 0)),
-            total_paid=int(total_paid) if total_paid is not None else None,
-            payment_method=data.get("payment_method"),
-            cancelled_at=data.get("cancelled_at"),
-            cancel_reason=str(data.get("cancel_reason", "")),
         )

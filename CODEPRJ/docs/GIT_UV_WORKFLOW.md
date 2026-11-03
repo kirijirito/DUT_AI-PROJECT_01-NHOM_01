@@ -19,7 +19,8 @@ Nếu repo chưa có `uv.lock`, một thành viên chạy `uv lock` rồi commit
   - `feature/models-json-store`
   - `feature/repositories`
   - `feature/order-kitchen`
-  - `feature/payment-report`
+  - `feature/payment`
+  - `feature/queue-linked-list`
   - `feature/gradio-ui`
   - `fix/queue-rebuild`
 - Không push trực tiếp lên `main`/`develop`.

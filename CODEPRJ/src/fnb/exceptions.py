@@ -13,10 +13,6 @@ class NotFoundError(FNBError):
     """Không tìm thấy mã món hoặc đơn hàng."""
 
 
-class ConflictError(FNBError):
-    """Xung đột với dữ liệu hiện tại."""
-
-
 class InvalidStateError(FNBError):
     """Trạng thái hiện tại không cho phép thực hiện hành động."""
 

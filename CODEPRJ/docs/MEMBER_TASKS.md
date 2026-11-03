@@ -1,77 +1,70 @@
-# Phân công 5 thành viên — Backend-first, không quản lý bàn
+# Phân công 5 thành viên — Phiên bản tối giản Backend-first
 
-Mỗi thành viên cần nêu được: **Input mình nhận → trách nhiệm của module → Output bàn giao → cách kiểm tra**. Không chỉ nhận file để code riêng.
+Mỗi người phải hiểu: Input nhận từ đâu → mình xử lý gì → Output bàn giao cho ai → kiểm tra bằng cách nào.
 
 ## Thành viên 1 — Thanh Bình: Models, JSON, khởi tạo
 
-**Input:** SRS đã chốt, `docs/API_CONTRACT.md`.
+**Phạm vi:** `models.py`, `storage/json_store.py`, `bootstrap.py`, `data/`.
 
-**Việc làm:**
-- Giữ cấu trúc thư mục, quy tắc đặt tên và cấu trúc dữ liệu.
-- Duy trì `MenuItem`, `Order`, `OrderItem`, enum trạng thái trong `src/fnb/models.py`.
-- Duy trì `JsonStore` để đọc/ghi JSON; tạo mẫu `data/menu.json`, `data/orders.json`.
-- Duy trì `bootstrap.py`, `exceptions.py`, README và lệnh chạy.
-- Review mọi thay đổi ảnh hưởng đến schema; không để UI sửa trực tiếp JSON.
+- Định nghĩa `MenuItem`, `Order`, `OrderItem`, hai enum trạng thái.
+- Đảm bảo menu và đơn hàng đọc/ghi JSON.
+- Duy trì `queue_seq` để khôi phục đúng FIFO.
+- Kết nối Repository, Service và Controller trong `bootstrap.py`.
+- Không viết logic Queue trong JSON Store; không quản lý bàn/báo cáo.
 
-**Bàn giao:** Model chuyển qua lại dict được; file JSON mẫu hợp lệ; khởi tạo context không ghi đè dữ liệu có sẵn.
-
-**Tự kiểm tra:** tạo Model → `to_dict()` → ghi JSON → khởi động Repository mới → nạp lại đúng dữ liệu.
+**Bàn giao:** Model serialize/deserialize được; `build_context()` khởi tạo được và Queue tự khôi phục qua `KitchenService`.
 
 ## Thành viên 2 — Repository và Hash Map
 
-**Input:** Model, JsonStore và schema do thành viên 1 chốt.
+**Phạm vi:** `repositories/menu_repository.py`, `repositories/order_repository.py`.
 
-**Việc làm:**
-- `MenuRepository` và `OrderRepository`.
-- Lập chỉ mục bằng `dict` theo mã món/mã đơn; cung cấp `get_by_id`, `list_all`, `upsert`, và CRUD cơ bản nếu cần.
-- Đồng bộ thay đổi với JSON và xử lý ID không tồn tại.
-- Viết test tra cứu O(1) theo cách dùng dict, CRUD, và khởi động lại Repository.
+- Dùng `dict` lập chỉ mục theo mã món/mã đơn.
+- Cung cấp `get_by_id`, `list_all`, `upsert`.
+- Lưu JSON trước khi cập nhật cache để tránh cache lệch khi ghi file lỗi.
+- Viết test tra cứu, lưu và nạp lại dữ liệu.
 
-**Không làm:** quy tắc hủy đơn, chuyển trạng thái bếp, tính giảm giá hay chỉnh UI.
+**Bàn giao:** Menu/Order tra cứu theo mã trung bình O(1); giải thích được Hash Map nằm ở Repository.
 
-**Bàn giao:** Repository test độc lập được; giải thích được Hash Map đang nằm ở đâu và vì sao tra cứu theo mã trung bình O(1).
+## Thành viên 3 — Queue OOP và nghiệp vụ bếp
 
-## Thành viên 3 — Đơn hàng và bếp
+**Phạm vi:** `queue/node.py`, `queue/queue.py`, `services/kitchen_service.py`, `controllers/kitchen_controller.py`.
 
-**Input:** Models/Repository/API contract.
+- Tự cài Node và Queue bằng Linked List; quản lý front, rear, size.
+- Cài `enqueue`, `dequeue`, `peek`, `is_empty`, `size`.
+- Khôi phục các món QUEUED theo `queue_seq` khi khởi động.
+- Chỉ phục vụ Node đầu Queue; lưu trạng thái SERVED xuống JSON trước khi dequeue.
+- Viết test FIFO, rỗng, một phần tử, nhiều phần tử, khôi phục sau restart.
 
-**Việc làm:**
-- `MenuService`: danh sách món còn bán và tra cứu mã.
-- `OrderService`: tạo đơn, thêm món, snapshot tên/giá, kiểm tra số lượng, hủy đơn hợp lệ.
-- `KitchenService`: `deque` FIFO; xử lý `QUEUED → PREPARING → READY → SERVED`; khôi phục hàng đợi theo `queue_seq`.
-- Controller cho Menu, Order và Kitchen.
-- Test FIFO, thêm món vào cuối Queue, sai mã/số lượng, hủy không hợp lệ, khôi phục sau restart.
+**Bàn giao:** Có thể demo Linked List Queue độc lập và xử lý món từ QUEUED sang SERVED.
 
-**Bàn giao:** Có thể tạo đơn từ input mẫu, xem Queue và xử lý trạng thái mà không cần Gradio.
+## Thành viên 4 — Tạo đơn và thanh toán
 
-## Thành viên 4 — Thanh toán và báo cáo
+**Phạm vi:** `services/order_service.py`, `services/menu_service.py`, `services/payment_service.py` và Controllers liên quan.
 
-**Input:** Models/OrderRepository và API contract; thống nhất quy tắc trạng thái với thành viên 3.
+- Tạo một Order từ giỏ món; kiểm tra mã món và số lượng.
+- Gộp dòng trùng mã món/cùng ghi chú; chụp tên và giá tại thời điểm đặt.
+- Gửi từng dòng món đến KitchenService theo queue_seq.
+- Xem hóa đơn, gộp cùng món và tính tiền.
+- Chỉ checkout khi mọi dòng đã SERVED; lưu PAID, paid_at, total_paid.
+- Viết test dữ liệu sai, gộp số lượng, thanh toán sớm và thanh toán lặp.
 
-**Việc làm:**
-- `PaymentService.preview_bill()`: tạo hóa đơn xem trước từ giá snapshot.
-- `PaymentService.checkout()`: kiểm tra trạng thái món; tính subtotal, giảm giá, tiền thanh toán; lưu phương thức, thời điểm, biên nhận; chặn thanh toán hai lần.
-- `ReportService`: thống kê số đơn PAID và doanh thu theo ngày.
-- Controller cho Payment và Report.
-- Test còn món QUEUED/PREPARING, giảm giá sai, thanh toán thành công/lặp, báo cáo chỉ tính đơn PAID.
-
-**Bàn giao:** Hóa đơn/biên nhận và báo cáo chạy qua Controller với các tình huống lỗi được kiểm tra.
+**Bàn giao:** Tạo đơn → Queue → thanh toán được qua Controller, không cần UI.
 
 ## Thành viên 5 — Frontend Gradio và tích hợp
 
-**Input:** Controller contract và Backend có thể import được.
+**Phạm vi:** `ui/app.py`, `ui/presenter.py`, `ui/views/`.
 
-**Việc làm:**
-- Dựng màn hình menu, tạo/thêm đơn, hàng đợi bếp, thanh toán và báo cáo.
-- Callback chỉ đọc input, gọi Controller, hiển thị kết quả/thông báo.
-- Không tự tính tổng tiền, quản lý Queue hoặc sửa file JSON trong UI.
-- Thực hiện demo từ tạo đơn đến thanh toán.
+- Dựng ba tab: Đặt món, Queue bếp, Thanh toán & Hóa đơn.
+- Tab Đặt món: menu table, chọn mã món, số lượng, ghi chú, giỏ hàng, tạo đơn.
+- Tab Bếp: hiển thị Queue và món SERVED; chỉ có nút phục vụ phần tử đầu.
+- Tab Thanh toán: chọn Order, xem hóa đơn, xác nhận và hiển thị bill.
+- Callback chỉ gọi Controller; không sửa JSON, không tự thao tác Linked List.
 
-**Bàn giao:** Người dùng chạy một luồng liền mạch từ UI; các lỗi nghiệp vụ được hiển thị dễ hiểu.
+**Bàn giao:** Demo liền mạch từ chọn món đến in bill; UI hiển thị lỗi Backend thân thiện.
 
-## Trách nhiệm chung
+## Việc chung
 
-- Mỗi người viết test cho phần mình.
-- Nhánh riêng → PR về `develop` → review → merge; không push trực tiếp lên `main`/`develop`.
-- Mọi thay đổi schema/API phải được báo nhóm và cập nhật `docs/API_CONTRACT.md`.
-- Trong project này không triển khai nghiệp vụ bàn ăn; không tạo `TableService`, `TableRepository` hoặc `table_id` trong đơn.
+- Cả nhóm đọc `API_CONTRACT.md` trước khi code song song.
+- Mọi thay đổi trạng thái/field phải trao đổi với người phụ trách Models và cập nhật contract.
+- Mỗi thành viên viết test cho phần mình.
+- Dùng Feature branch → PR → review → merge vào `develop`.

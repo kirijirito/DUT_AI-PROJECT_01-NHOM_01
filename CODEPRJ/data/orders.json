@@ -1,1 +1,88 @@
-[]
+[
+  {
+    "id": "ORD-CEDF948AE7",
+    "items": [
+      {
+        "id": "OI-F5EABD4DE2",
+        "menu_item_id": "MI-002",
+        "name": "Burger Phô mai Bò",
+        "unit_price": 50000,
+        "quantity": 5,
+        "note": "",
+        "status": "SERVED",
+        "queue_seq": 1
+      },
+      {
+        "id": "OI-495944C46B",
+        "menu_item_id": "MI-004",
+        "name": "Burger Phô mai Cá",
+        "unit_price": 42000,
+        "quantity": 4,
+        "note": "",
+        "status": "SERVED",
+        "queue_seq": 2
+      }
+    ],
+    "status": "PAID",
+    "created_at": "2026-11-03T11:36:11+07:00",
+    "paid_at": "2026-11-03T11:36:33+07:00",
+    "total_paid": 418000
+  },
+  {
+    "id": "ORD-8BEF3898F9",
+    "items": [
+      {
+        "id": "OI-A01B7FBA75",
+        "menu_item_id": "MI-001",
+        "name": "Burger Phô mai Gà",
+        "unit_price": 45000,
+        "quantity": 4,
+        "note": "",
+        "status": "SERVED",
+        "queue_seq": 3
+      }
+    ],
+    "status": "PAID",
+    "created_at": "2026-11-03T11:36:55+07:00",
+    "paid_at": "2026-11-03T11:37:10+07:00",
+    "total_paid": 180000
+  },
+  {
+    "id": "ORD-72FCDA497B",
+    "items": [
+      {
+        "id": "OI-54B138FB4D",
+        "menu_item_id": "MI-001",
+        "name": "Burger Phô mai Gà",
+        "unit_price": 45000,
+        "quantity": 5,
+        "note": "",
+        "status": "SERVED",
+        "queue_seq": 4
+      }
+    ],
+    "status": "PAID",
+    "created_at": "2026-11-03T11:37:19+07:00",
+    "paid_at": "2026-11-03T11:37:36+07:00",
+    "total_paid": 225000
+  },
+  {
+    "id": "ORD-D3F1CC69CE",
+    "items": [
+      {
+        "id": "OI-6DE1E7B990",
+        "menu_item_id": "MI-009",
+        "name": "Pepsi",
+        "unit_price": 15000,
+        "quantity": 5,
+        "note": "",
+        "status": "SERVED",
+        "queue_seq": 5
+      }
+    ],
+    "status": "PAID",
+    "created_at": "2026-11-03T11:37:49+07:00",
+    "paid_at": "2026-11-03T11:38:03+07:00",
+    "total_paid": 75000
+  }
+]
